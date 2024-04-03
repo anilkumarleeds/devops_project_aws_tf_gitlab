@@ -1,0 +1,53 @@
+stages:
+  - build
+  - plan
+  - deploy
+
+image:
+  name: hashicorp/terraform:light
+  entrypoint:
+    - '/usr/bin/env'
+    - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' 
+
+variables:
+  DOCKER_IMAGE_NAME: "anilkdevops/uitest"
+  IMAGE_TAG: "latest"
+  TF_CLI_ARGS: "-no-color"
+  TF_LOG: "TRACE"
+
+build_image:
+  stage: build
+  when: manual
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - echo "$DOCKERHUB_ACCESS_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+    - cd landing
+    - echo "Building Docker image"
+    - docker build -t $DOCKER_IMAGE_NAME:$IMAGE_TAG .
+    - docker images
+    - echo "Pushing Docker image to Docker Hub"
+    - docker push $DOCKER_IMAGE_NAME:$IMAGE_TAG
+
+terraform_infraplan:
+  stage: plan
+  when: manual
+  script:
+    - cd iac
+    - export AWS_ACCESS_KEY=${AWS_ACCESS_KEY_ID}
+    - export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    - terraform init 
+    - terraform plan
+
+terraform_deploy:
+  stage: deploy
+  when: manual
+  script:
+    - cd deploy
+    - apk add aws-cli
+    - export AWS_ACCESS_KEY=${AWS_ACCESS_KEY_ID}
+    - export AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    - aws eks update-kubeconfig --region ap-south-1 --name demo
+    - terraform init 
+    - terraform plan
